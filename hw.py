@@ -603,7 +603,7 @@ def helperBPMFRating(trainFile, testFile, outputFile):
 	writeToFinalFile(transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2, result, outputFile)
 
 
-# blend IUF & cosine similarity & BPMFR , compute the average rating as my predicte rating
+# blend IUF & cosine similarity & BPMF , compute the average rating as my predicte rating
 def helperOwnAlgoRating(trainFile, testFile, outputFile):
 	trainData = np.loadtxt(trainFile, dtype='i', delimiter='\t')
 	testData =  np.loadtxt(testFile, dtype='i', delimiter=' ')
@@ -611,15 +611,15 @@ def helperOwnAlgoRating(trainFile, testFile, outputFile):
 
 	transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2 = transformTestData(testData, movieLen)
 
-	#result1 = computePearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
-	#result1 = computeIufPearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
 	result1 = computeIufPearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
+	#result1 = computeIufPearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
 
 	#result2 = computeNokItemBaseRating(movieMatrix, weightMatrix, transformTestDataMatrix1, transformTestDataMatrix2)
 	result2 = computeCosineRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
 	
 	#result3 = computeSvdRating(trainData, transformTestDataMatrix1, transformTestDataMatrix2)
 	result3 = computeBPMFRating(trainData, transformTestDataMatrix1, transformTestDataMatrix2)
+
 
 	finalRet = []
 	for i in range(0, len(result1)):
@@ -687,7 +687,7 @@ def validate(predictFile, resultFile):
 
 
 def main():
-	
+	'''
 	helperCosineSimi('train.txt', 'test5.txt', 'reportFile5_cosineSimi.txt')
 	helperCosineSimi('train.txt', 'test10.txt', 'reportFile10_cosineSimi.txt')
 	helperCosineSimi('train.txt', 'test20.txt', 'reportFile20_cosineSimi.txt')
@@ -705,7 +705,7 @@ def main():
 	helperCasePearsonCorr('train.txt', 'test20.txt', 'reportFile20_case.txt')
 
 	helperItemBaseRating('train.txt')
-	
+	'''
 	helperOwnAlgoRating('train.txt', 'test5.txt', 'reportFile5_own.txt')
 	helperOwnAlgoRating('train.txt', 'test10.txt', 'reportFile10_own.txt')
 	helperOwnAlgoRating('train.txt', 'test20.txt', 'reportFile20_own.txt')
