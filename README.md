@@ -1,8 +1,16 @@
 # movie_recommender
 predict movie ratings
 
-#Install dependencies
+
+Install dependencies
+--------
+```
 pip install -r requirements.txt
 
-#Run
+```
+Run
+--------
+```
 python hw.py
+
+```
