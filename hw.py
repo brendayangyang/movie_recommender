@@ -1,6 +1,8 @@
 
 import numpy as np
 from numpy.linalg import norm
+from scipy.sparse.linalg import svds
+from recommend.bpmf import BPMF
 import math
 import random
 
@@ -34,6 +36,8 @@ def calNormalCosineSimilarity(inputTrain, inputTest):
 	return arr
 
 
+
+
 def computeCosineRating(inputTrain, k, testRating, testUnknown):
 	ratingReturn = []
 	for i in range(0, len(testRating)):
@@ -62,6 +66,29 @@ def computeCosineRating(inputTrain, k, testRating, testUnknown):
 
 	return ratingReturn
 
+def computeNokCosineRating(inputTrain, threshold, testRating, testUnknown):
+	ratingReturn = []
+	for i in range(0, len(testRating)):
+		testUid = testRating[i]
+		weightArray = calUserSimilarity(inputTrain, testUid)	
+		weightIndexArray = np.argsort(weightArray, axis = 0 )[::-1]
+		ratingarr = []
+		for j in range(0, len(testUnknown[i])):
+			mid = testUnknown[i][j]
+			numerator = 0
+			denominator = 0
+			for a in range(0, len(weightIndexArray)):
+				uid = weightIndexArray[a]				
+				if inputTrain[uid][mid - 1] != 0 and abs(weightArray[uid]) >= threshold:
+					numerator += weightArray[uid] * inputTrain[uid][mid - 1]
+					denominator += weightArray[uid]
+			if denominator == 0:
+				ratingarr.append(0)
+			else:
+				ratingarr.append(numerator / denominator)
+		ratingReturn.append(ratingarr)
+
+	return ratingReturn
 
 
 def transformToAvgMatrix(inputTrain):
@@ -83,9 +110,36 @@ def transformToAvgMatrix(inputTrain):
 	return newTrain, avgArr
 
 
+def transformToSmoothAvgMatrix(inputTrain, globalAvg, beta):
+	newTrain = np.zeros((len(inputTrain), len(inputTrain[0])))
+	avgArr = np.zeros(len(inputTrain))
+
+	for i in range(0, len(inputTrain)):
+		sum = 0
+		count = 0
+		for j in range(0, len(inputTrain[0])):
+			if inputTrain[i][j] != 0:
+				sum = sum + inputTrain[i][j]
+				count = count + 1
+		if count != 0:
+			avgArr[i] = count / (beta + count) * (sum / count) + beta / (beta + count) * globalAvg
+
+		for k in range(0, len(inputTrain[0])):
+			if inputTrain[i][k] != 0:
+				newTrain[i][k] = inputTrain[i][k] - avgArr[i]
+	return newTrain, avgArr
+
+def calcGlobalAverage(inputTrain):
+	return np.sum(inputTrain) / np.count_nonzero(inputTrain)
+
 def computePearsonCorrRating(inputTrain, k, testKnown, testUnknown):
 	avgTrain, avgArrTrain = transformToAvgMatrix(inputTrain)
 	avgTestKnown, avgArrTest = transformToAvgMatrix(testKnown)
+
+	#globalAvg = calcGlobalAverage(inputTrain)
+	#avgTrain, avgArrTrain = transformToSmoothAvgMatrix(inputTrain, globalAvg, 1)
+	#avgTestKnown, avgArrTest = transformToSmoothAvgMatrix(testKnown, globalAvg, 1)
+
 	ratingReturn = []
 		
 	for i in range(0, len(testKnown)):
@@ -118,6 +172,42 @@ def computePearsonCorrRating(inputTrain, k, testKnown, testUnknown):
 
 	return ratingReturn
 
+def computeNokPearsonCorrRating(inputTrain, threshold, testKnown, testUnknown):
+	#avgTrain, avgArrTrain = transformToAvgMatrix(inputTrain)
+	#avgTestKnown, avgArrTest = transformToAvgMatrix(testKnown)
+
+	globalAvg = calcGlobalAverage(inputTrain)
+	avgTrain, avgArrTrain = transformToSmoothAvgMatrix(inputTrain, globalAvg, 1)
+	avgTestKnown, avgArrTest = transformToSmoothAvgMatrix(testKnown, globalAvg, 1)
+
+	ratingReturn = []
+		
+	for i in range(0, len(testKnown)):
+
+		weightArray = calUserSimilarity(avgTrain, avgTestKnown[i])
+		absArr = np.zeros(len(weightArray))
+		for b in range(0, len(weightArray)):
+			absArr[b] = abs(weightArray[b])
+		weightIndexArray = np.argsort(absArr, axis = 0 )[::-1]
+		ratingarr = []
+		
+		for j in range(0, len(testUnknown[i])):
+			colid = testUnknown[i][j]
+			numerator = 0
+			denominator = 0
+			for a in range(0, len(weightIndexArray)):
+				rowid = weightIndexArray[a]				
+				if inputTrain[rowid][colid - 1] != 0 and abs(weightArray[rowid]) >= threshold:
+					numerator += weightArray[rowid] * avgTrain[rowid][colid - 1]
+					denominator += absArr[rowid]
+			if denominator == 0:
+				ratingarr.append(0)
+			else:
+				ratingarr.append(avgArrTest[i] + numerator / denominator)
+		ratingReturn.append(ratingarr)
+
+	return ratingReturn
+
 
 def computeIuf(inputTrain):
 	iufArr = np.zeros(len(inputTrain[0]))	
@@ -142,6 +232,7 @@ def transformToIufMatrix(inputTrain, iufArr):
 def computeIufPearsonCorrRating(inputTrain, k, testKnown, testUnknown):
 	avgTrain, avgArrTrain = transformToAvgMatrix(inputTrain)
 	avgTestKnown, avgArrTest = transformToAvgMatrix(testKnown)
+
 	iufArr = computeIuf(inputTrain)
 	iufTrain = transformToIufMatrix(avgTrain, iufArr)
 	iufTestKnown = transformToIufMatrix(avgTestKnown, iufArr)
@@ -171,6 +262,44 @@ def computeIufPearsonCorrRating(inputTrain, k, testKnown, testUnknown):
 					count += 1
 					if count == k:
 						break
+			if denominator == 0:
+				ratingarr.append(0)
+			else:
+				ratingarr.append(avgArrTest[i] + numerator / denominator)
+
+		ratingReturn.append(ratingarr)
+
+	return ratingReturn
+
+def computeIufNokPearsonCorrRating(inputTrain, threshold, testKnown, testUnknown):
+	avgTrain, avgArrTrain = transformToAvgMatrix(inputTrain)
+	avgTestKnown, avgArrTest = transformToAvgMatrix(testKnown)
+
+	iufArr = computeIuf(inputTrain)
+	iufTrain = transformToIufMatrix(avgTrain, iufArr)
+	iufTestKnown = transformToIufMatrix(avgTestKnown, iufArr)
+
+	
+	ratingReturn = []	
+	for i in range(0, len(testKnown)):
+
+		weightArray = calUserSimilarity(iufTrain, iufTestKnown[i])
+		absArr = np.zeros(len(weightArray))
+		for b in range(0, len(weightArray)):
+			absArr[b] = abs(weightArray[b])
+		weightIndexArray = np.argsort(absArr, axis = 0 )[::-1]
+
+		ratingarr = []
+		
+		for j in range(0, len(testUnknown[i])):
+			colid = testUnknown[i][j]
+			numerator = 0
+			denominator = 0
+			for a in range(0, len(weightIndexArray)):
+				rowid = weightIndexArray[a]				
+				if inputTrain[rowid][colid - 1] != 0 and weightArray[rowid] >= threshold:
+					numerator += weightArray[rowid] * avgTrain[rowid][colid - 1]
+					denominator += absArr[rowid]
 			if denominator == 0:
 				ratingarr.append(0)
 			else:
@@ -287,6 +416,27 @@ def computeNokItemBaseRating(movieMatrix, weightMatrix, testKnown, testUnknown):
 		ratingReturn.append(ratingarr)	
 	return ratingReturn	
 
+def computeSvdRating(inputTrain, testRating, testUnknown):
+	allData = np.concatenate((inputTrain, testRating), axis = 0)
+	
+	avgAllData, avgArr = transformToAvgMatrix(allData)
+	u, s, vt = svds(allData, k = 50)
+
+	#globalAvg = calcGlobalAverage(inputTrain)
+	#avgAllData, avgArr = transformToSmoothAvgMatrix(allData, globalAvg, 1)
+	#u, s, vt = svds(avgAllData, k = 50)
+	#u, s, vt = np.linalg.svd(avgAllData, full_matrices=True)
+	
+	pred = np.dot(np.dot(u, np.diag(s)), vt)
+	transUserLen = len(inputTrain)
+	result = []
+	for i in range(len(testUnknown)):
+		currResult = np.zeros(len(testUnknown[i]))
+		for j in range(len(testUnknown[i])):
+			currResult[j] = avgArr[i] + pred[transUserLen + i][testUnknown[i][j] - 1]
+		result.append(currResult)
+	return result
+
 '''
 def helperOwnItemBase(inputTrain):
 	avgTrain, avgArrTrain = transformToAvgMatrix(inputTrain)
@@ -327,38 +477,67 @@ def computeOwn(movieMatrix, weightMatrix, testKnown, testUnknown):
 				ratingarr.append(numerator / denominator)
 		ratingReturn.append(ratingarr)	
 	return ratingReturn	
-
 '''
 
-def calOwnSimi(inputTrain, inputTest):
+def transformToTriplet(data):
+	ret = []
+	for i in range(len(data)):
+		for j in range(len(data[0])):
+			if data[i][j] != 0:
+				ret.append([i, j, data[i][j]])
+	return np.array(ret, dtype=int)
+
+def computeBPMFRating(inputTrain, testRating, testUnknown):
+	allData = np.concatenate((inputTrain, testRating), axis = 0)
+	allDataTriplet = transformToTriplet(allData)
+	bpmf = BPMF(n_user=allData.shape[0], n_item=allData.shape[1], n_feature=15,
+                max_rating=5., min_rating=1., seed=0).fit(allDataTriplet, n_iters=20)
+	transUserLen = len(inputTrain)
+	result = []
+	for i in range(len(testUnknown)):
+		curr = bpmf.predict(np.array([[transUserLen + i, j - 1] for j in testUnknown[i]]))
+		result.append(curr)
+	return result
+
+def calMovieArr(inputTrain):
+	transMatrix = np.transpose(inputTrain)
+	arr = np.zeros(len(transMatrix));
+	for i in range(0, len(transMatrix)):
+		count = 0
+		for j in range(0, len(transMatrix[0])):
+			if transMatrix[i][j] != 0:
+				count += 1
+		arr[i] = count
+	return arr
+
+def calOwnSimi(inputTrain, inputTest, movieArr):
 	maxlen = len(inputTrain)
 	arr = [0] * maxlen
+
 	for i in range(0, maxlen):	
-		commonCount = 0
 		count1 = 0
 		count2 = 0
 		for k in range(0, len(inputTrain[0])):
 			if inputTrain[i][k] != 0:
 				count1 += 1
 			if inputTest[k] != 0:
-				count2 += 1
-			if inputTest[k] != 0 and inputTrain[i][k] != 0:
-				commonCount += 1
+				count2 += 1		
 
 		dis = 0	
 		numerator = 0
 		for j in range(0, len(inputTrain[0])):
 			if inputTest[j] != 0 and inputTrain[i][j] != 0:
 				dis = 2 - abs(inputTest[j] - inputTrain[i][j])
-				numerator += dis / math.log(1 + commonCount)	
+				numerator += dis / math.log(1 + movieArr[j])	
 		arr[i] = numerator / (math.sqrt(count1) * math.sqrt(count2))
 	return arr
 
 def computeOwnRating(inputTrain, k, testRating, testUnknown):
 	ratingReturn = []
+	movieArr = calMovieArr(inputTrain)
 	for i in range(0, len(testRating)):
 		testUid = testRating[i]
-		weightArray = calOwnSimi(inputTrain, testUid)	
+		weightArray = calOwnSimi(inputTrain, testUid, movieArr)	
 		weightIndexArray = np.argsort(weightArray, axis = 0 )[::-1]
 		ratingarr = []
 		for j in range(0, len(testUnknown[i])):
@@ -381,6 +560,16 @@ def computeOwnRating(inputTrain, k, testRating, testUnknown):
 		ratingReturn.append(ratingarr)
 
 	return ratingReturn
+
+
+def transformTrainData(inputTrain):
+	matrix1 = inputTrain[0:150, :]
+	matrix2 = inputTrain[50:100, :]
+	matrix3 = inputTrain[100:200, :]
+	matrix4 = inputTrain[20:120, :]
+	return matrix1, matrix2, matrix3, matrix4
+
+
 
 
 
@@ -445,6 +634,7 @@ def helperCosineSimi(trainFile, testFile, outputFile):
 	transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2 = transformTestData(testData, movieLen)
 
 	result = computeCosineRating(trainData, 40, transformTestDataMatrix1, transformTestDataMatrix2)
+	#result = computeNokCosineRating(trainData, 0.6, transformTestDataMatrix1, transformTestDataMatrix2)
 
 	writeToFinalFile(transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2, result, outputFile)
 
@@ -456,7 +646,7 @@ def helperPearsonCorr(trainFile, testFile, outputFile):
 	transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2 = transformTestData(testData, movieLen)
 
 	result = computePearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
-
+	#result = computeNokPearsonCorrRating(trainData, 0.6, transformTestDataMatrix1, transformTestDataMatrix2)
 	writeToFinalFile(transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2, result, outputFile)
 
 
@@ -545,15 +735,62 @@ def helperOwnAlgoRating(trainFile):
 	validate('yytest20_own.txt', 'yytest20_res.txt')
 	'''
 
-def helperOwnAlgoRating(trainFile, testFile, outputFile):
+def helperBPMFRating(trainFile, testFile, outputFile):
 	trainData = np.loadtxt(trainFile, dtype='i', delimiter='\t')
 	testData =  np.loadtxt(testFile, dtype='i', delimiter=' ')
 	movieLen = len(trainData[0])
 	transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2 = transformTestData(testData, movieLen)
 
-	result = computeOwnRating(trainData, 40, transformTestDataMatrix1, transformTestDataMatrix2)
+	result = computeBPMFRating(trainData, transformTestDataMatrix1, transformTestDataMatrix2)
 
 	writeToFinalFile(transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2, result, outputFile)
+
+def helperOwnAlgoRating(trainFile, testFile, outputFile):
+	trainData = np.loadtxt(trainFile, dtype='i', delimiter='\t')
+	#matrix1, matrix2, matrix3, matrix4 = transformTrainData(trainData)
+	testData =  np.loadtxt(testFile, dtype='i', delimiter=' ')
+	movieLen = len(trainData[0])
+
+	transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2 = transformTestData(testData, movieLen)
+
+	#result1 = computePearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
+	#result1 = computeIufPearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
+	result1 = computeIufPearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
+
+	#movieMatrix, weightMatrix = helperItemBase(trainData)
+	#result2 = computeNokItemBaseRating(movieMatrix, weightMatrix, transformTestDataMatrix1, transformTestDataMatrix2)
+	result2 = computeCosineRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
+	
+	#result3 = computeSvdRating(trainData, transformTestDataMatrix1, transformTestDataMatrix2)
+	result3 = computeBPMFRating(trainData, transformTestDataMatrix1, transformTestDataMatrix2)
+
+	finalRet = []
+	weightTrainData = []
+	for i in range(0, len(result1)):
+		arr = []
+		for j in range(0, len(result1[i])):
+			#arr.append((3 * result1[i][j] + 3 * result2[i][j])/ 6)
+			#arr.append((4 * result1[i][j] + 4 * result2[i][j] + 1 * result3[i][j])/ 9)
+			arr.append((result1[i][j] + result2[i][j] + result3[i][j]) / 3)
+			weightTrainData.append([result1[i][j], result2[i][j], result3[i][j]])
+		finalRet.append(arr)
+
+	writeToFinalFile(transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2, finalRet, outputFile)
+	np.savetxt("yytrain_weight.txt", weightTrainData, delimiter=" ", fmt='%i')
+
+
+	
+def helperabc(trainFile, testFile, outputFile):
+	trainData = np.loadtxt(trainFile, dtype='i', delimiter='\t')
+	testData =  np.loadtxt(testFile, dtype='i', delimiter=' ')
+	movieLen = len(trainData[0])
+	transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2 = transformTestData(testData, movieLen)
+
+
+	result = computeOwnRating(trainData, 10, transformTestDataMatrix1, transformTestDataMatrix2)
+
+	writeToFinalFile(transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2, result, outputFile)
+
 
 
 
@@ -714,11 +951,36 @@ def main():
 	
 	helperOwnAlgoRating('yytrain.txt')
 	'''
-
+	'''
 	trainData = np.loadtxt("train.txt", dtype='i', delimiter='\t')
 	ownTest(trainData, 20)
-	helperOwnAlgoRating('yytrain.txt', 'yytest20.txt', 'yytest20_own.txt')
-	validate('yytest20_own.txt', 'yytest20_res.txt')
+	'''
 	
+	#helperPearsonCorr('yytrain.txt', 'yytest20.txt', 'yytest20_pearsonCorr.txt')
+	#validate('yytest20_pearsonCorr.txt', 'yytest20_res.txt')
+	
+	helperOwnAlgoRating('yytrain.txt', 'yytest20.txt', 'yytest20_ownalgo2.txt')
+	validate('yytest20_ownalgo2.txt', 'yytest20_res.txt')
+	
+	
+	#trainData = np.loadtxt("train.txt", dtype='i', delimiter='\t')
+	#ownTest(trainData, 20)
+	#helperCosineSimi('yytrain.txt', 'yytest20.txt', 'yytest20_cosine.txt')
+	#validate('yytest20_cosine.txt', 'yytest20_res.txt')
+	
+	
+	#helperOwnAlgoRating('train.txt', 'test5.txt', 'reportFile5_own2.txt')
+	#helperOwnAlgoRating('train.txt', 'test10.txt', 'reportFile10_own2.txt')
+	#helperOwnAlgoRating('train.txt', 'test20.txt', 'reportFile20_own2.txt')
+	
+	
+	#helperBPMFRating('yytrain.txt', 'yytest20.txt', 'yytest20_bpmf.txt')
+	#validate('yytest20_bpmf.txt', 'yytest20_res.txt')
+		
+	#helperBPMFRating('train.txt', 'test5.txt', 'reportFile5_bpm.txt')
+	#helperBPMFRating('train.txt', 'test10.txt', 'reportFile10_bpm.txt')
+	#helperBPMFRating('train.txt', 'test20.txt', 'reportFile20_bpm.txt')
+
+
 if __name__== "__main__":
   	main()
