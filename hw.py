@@ -612,7 +612,7 @@ def helperOwnAlgoRating(trainFile, testFile, outputFile):
 	transformTestDataArr, transformTestDataMatrix1, transformTestDataMatrix2 = transformTestData(testData, movieLen)
 
 	result1 = computeIufPearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
-	#result1 = computeIufPearsonCorrRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
+	#result1 = computeIufNokPearsonCorrRating(trainData, 0.6, transformTestDataMatrix1, transformTestDataMatrix2)
 
 	#result2 = computeNokItemBaseRating(movieMatrix, weightMatrix, transformTestDataMatrix1, transformTestDataMatrix2)
 	result2 = computeCosineRating(trainData, 50, transformTestDataMatrix1, transformTestDataMatrix2)
